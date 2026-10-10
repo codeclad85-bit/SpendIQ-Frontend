@@ -1,0 +1,4280 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+
+const String baseUrl = 'http://127.0.0.1:8080';
+
+void main() {
+  runApp(const SpendIQApp());
+}
+
+// =====================================================
+// APP
+// =====================================================
+
+class SpendIQApp extends StatelessWidget {
+  const SpendIQApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'SpendIQ',
+      theme: ThemeData(
+        primarySwatch: Colors.indigo,
+        scaffoldBackgroundColor: Colors.grey[100],
+      ),
+      home: const SpendIQSplashScreen(),
+    );
+  }
+}
+
+
+// =====================================================
+// SPENDIQ SIGNATURE SPLASH
+// =====================================================
+
+class SpendIQSplashScreen extends StatefulWidget {
+  const SpendIQSplashScreen({super.key});
+
+  @override
+  State<SpendIQSplashScreen> createState() => _SpendIQSplashScreenState();
+}
+
+class _SpendIQSplashScreenState extends State<SpendIQSplashScreen>
+    with TickerProviderStateMixin {
+  static const MethodChannel _platform = MethodChannel('spend_iq_test');
+
+  late final AnimationController _walletController;
+  late final AnimationController _coinController;
+  late final AnimationController _brandController;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _walletController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    );
+    _coinController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _brandController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    );
+
+    _runSplash();
+  }
+
+  Future<void> _playCoinSound() async {
+    try {
+      await _platform.invokeMethod('playCoinSound');
+    } catch (_) {
+      // App still works if the device cannot play the short native tone.
+    }
+  }
+
+  Future<int?> _savedUserId() async {
+    try {
+      final value = await _platform.invokeMethod('getSavedUserId');
+      if (value is int && value > 0) return value;
+      if (value is num && value.toInt() > 0) return value.toInt();
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _runSplash() async {
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (!mounted) return;
+
+    await _walletController.forward();
+    if (!mounted) return;
+
+    _playCoinSound();
+    await _coinController.forward();
+    if (!mounted) return;
+
+    await _brandController.forward();
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+    if (!mounted) return;
+
+    final userId = await _savedUserId();
+    if (!mounted) return;
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => userId != null
+            ? DashboardScreen(userId: userId)
+            : const LoginScreen(),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _walletController.dispose();
+    _coinController.dispose();
+    _brandController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const navy = Color(0xFF061126);
+    const purple = Color(0xFF7C4DFF);
+    const cyan = Color(0xFF29D9D0);
+
+    return Scaffold(
+      backgroundColor: navy,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 230,
+                  height: 230,
+                  child: AnimatedBuilder(
+                    animation: Listenable.merge([
+                      _walletController,
+                      _coinController,
+                    ]),
+                    builder: (context, _) {
+                      final open = Curves.easeOutBack.transform(
+                        _walletController.value,
+                      );
+                      final coin = Curves.easeOutCubic.transform(
+                        _coinController.value,
+                      );
+
+                      return Stack(
+                        alignment: Alignment.center,
+                        clipBehavior: Clip.none,
+                        children: [
+                          // Rupee coins rise out of the wallet.
+                          for (int i = 0; i < 3; i++)
+                            Positioned(
+                              top: 82 - (coin * (72 + i * 15)),
+                              left: 72 + i * 36,
+                              child: Opacity(
+                                opacity: _coinController.value,
+                                child: Transform.rotate(
+                                  angle: (i - 1) * .22 * coin,
+                                  child: Transform.scale(
+                                    scale: .65 + (.22 * coin),
+                                    child: Container(
+                                      width: 42,
+                                      height: 42,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFFFFD86F),
+                                            Color(0xFFFFA726),
+                                          ],
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFFFFC857)
+                                                .withValues(alpha: .35),
+                                            blurRadius: 18,
+                                          ),
+                                        ],
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: const Text(
+                                        '₹',
+                                        style: TextStyle(
+                                          color: Color(0xFF332000),
+                                          fontSize: 23,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          // Card coming out of wallet.
+                          Positioned(
+                            top: 69 - (open * 16),
+                            child: Transform.rotate(
+                              angle: -.10 * open,
+                              child: Container(
+                                width: 112,
+                                height: 62,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(15),
+                                  gradient: const LinearGradient(
+                                    colors: [cyan, Color(0xFF3B82F6)],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // Wallet body.
+                          Positioned(
+                            bottom: 31,
+                            child: Transform.scale(
+                              scale: .82 + (.18 * open),
+                              child: Container(
+                                width: 174,
+                                height: 112,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(28),
+                                  gradient: const LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      Color(0xFFA66BFF),
+                                      purple,
+                                      Color(0xFF4C37E8),
+                                    ],
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: purple.withValues(alpha: .45),
+                                      blurRadius: 30,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                                child: Align(
+                                  alignment: const Alignment(.88, .12),
+                                  child: Container(
+                                    width: 48,
+                                    height: 43,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF25186E),
+                                      borderRadius: BorderRadius.circular(13),
+                                    ),
+                                    child: const Icon(
+                                      Icons.circle,
+                                      size: 10,
+                                      color: Color(0xFFBDA8FF),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 14),
+                FadeTransition(
+                  opacity: CurvedAnimation(
+                    parent: _brandController,
+                    curve: Curves.easeIn,
+                  ),
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0, .25),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(
+                      parent: _brandController,
+                      curve: Curves.easeOutCubic,
+                    )),
+                    child: Column(
+                      children: [
+                        RichText(
+                          text: const TextSpan(
+                            style: TextStyle(
+                              fontSize: 42,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -.8,
+                            ),
+                            children: [
+                              TextSpan(
+                                text: 'Spend',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              TextSpan(
+                                text: 'IQ',
+                                style: TextStyle(color: purple),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'Smarter Choices. Brighter Future.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Color(0xFFAEBBD3),
+                            fontSize: 15,
+                            letterSpacing: .2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =====================================================
+// FIRST LOGIN SUCCESS COIN
+// =====================================================
+
+class LoginSuccessCoinScreen extends StatefulWidget {
+  final int userId;
+
+  const LoginSuccessCoinScreen({
+    super.key,
+    required this.userId,
+  });
+
+  @override
+  State<LoginSuccessCoinScreen> createState() => _LoginSuccessCoinScreenState();
+}
+
+class _LoginSuccessCoinScreenState extends State<LoginSuccessCoinScreen>
+    with SingleTickerProviderStateMixin {
+  static const MethodChannel _platform = MethodChannel('spend_iq_test');
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _run();
+  }
+
+  Future<void> _run() async {
+    try {
+      await _platform.invokeMethod('playCoinSound');
+    } catch (_) {}
+
+    await _controller.forward();
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DashboardScreen(userId: widget.userId),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const purple = Color(0xFF7C4DFF);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF061126),
+      body: Center(
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            final jump = Curves.easeOutBack.transform(_controller.value);
+            return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Transform.translate(
+                  offset: Offset(0, -75 * jump),
+                  child: Transform.scale(
+                    scale: .7 + (.35 * jump),
+                    child: Container(
+                      width: 92,
+                      height: 92,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFFE082), Color(0xFFFFA726)],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFFFC857)
+                                .withValues(alpha: .4),
+                            blurRadius: 28,
+                          ),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      child: const Text(
+                        '₹',
+                        style: TextStyle(
+                          fontSize: 50,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF332000),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Opacity(
+                  opacity: _controller.value,
+                  child: const Column(
+                    children: [
+                      Text(
+                        'Welcome to SpendIQ',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 25,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Your smarter money journey starts here.',
+                        style: TextStyle(
+                          color: Color(0xFFAEBBD3),
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 26),
+                SizedBox(
+                  width: 150,
+                  child: LinearProgressIndicator(
+                    value: _controller.value,
+                    minHeight: 5,
+                    borderRadius: BorderRadius.circular(10),
+                    color: purple,
+                    backgroundColor: const Color(0xFF172440),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// =====================================================
+// LOGIN SCREEN
+// =====================================================
+
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+
+  bool loading = false;
+
+  Future<void> login() async {
+    setState(() {
+      loading = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/auth/login'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'email': emailController.text.trim(),
+          'password': passwordController.text,
+        }),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        final int userId = data['id'];
+        const platform = MethodChannel('spend_iq_test');
+
+        await platform.invokeMethod(
+        'saveUserId',
+       {
+       'userId': userId,
+      },
+            );        
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => LoginSuccessCoinScreen(
+              userId: userId,
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invalid email or password'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Connection error: $e'),
+        ),
+      );
+    }
+
+    if (mounted) {
+      setState(() {
+        loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('SpendIQ Login'),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(height: 80),
+
+            const Text(
+              'SpendIQ',
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            const Text(
+              'Track less. Understand more.',
+              style: TextStyle(
+                color: Colors.grey,
+              ),
+            ),
+
+            const SizedBox(height: 30),
+
+            TextField(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Password',
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: loading ? null : login,
+                child: loading
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text('Login'),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            TextButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        const RegisterScreen(),
+                  ),
+                );
+              },
+              child: const Text('Create Account'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =====================================================
+// REGISTER SCREEN
+// =====================================================
+
+class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
+
+  @override
+  State<RegisterScreen> createState() =>
+      _RegisterScreenState();
+}
+
+class _RegisterScreenState extends State<RegisterScreen> {
+  final nameController = TextEditingController();
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+
+  bool loading = false;
+
+  Future<void> register() async {
+    if (nameController.text.trim().isEmpty ||
+        emailController.text.trim().isEmpty ||
+        passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please fill all fields'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      loading = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/auth/register'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'name': nameController.text.trim(),
+          'email': emailController.text.trim(),
+          'password': passwordController.text,
+        }),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Registration Successful!'),
+          ),
+        );
+
+        Navigator.pop(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Registration failed: ${response.body}',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Connection error: $e'),
+        ),
+      );
+    }
+
+    if (mounted) {
+      setState(() {
+        loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Create Account'),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            const SizedBox(height: 50),
+
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Name',
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            TextField(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Password',
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: loading ? null : register,
+                child: loading
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text('Register'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =====================================================
+// DASHBOARD SCREEN
+// =====================================================
+
+class DashboardScreen extends StatefulWidget {
+  final int userId;
+
+  const DashboardScreen({
+    super.key,
+    required this.userId,
+  });
+
+  @override
+  State<DashboardScreen> createState() =>
+      _DashboardScreenState();
+}
+
+class _DashboardScreenState
+    extends State<DashboardScreen> {
+
+  double totalSpending = 0;
+
+  double monthlyIncome = 0;
+  bool loadingIncome = false;
+
+  Map<String, dynamic>? smartBudget;
+  bool loadingSmartBudget = false;
+
+  Map<String, dynamic>? aiAdvice;
+  bool loadingAiAdvice = false;
+
+  List<Map<String, dynamic>> transactions = [];
+  bool showTransactions = false;
+
+  Map<String, double> get currentMonthCategorySpending {
+    final now = DateTime.now();
+    final totals = <String, double>{};
+
+    for (final expense in transactions) {
+      final date = DateTime.tryParse(expense['dateTime']?.toString() ?? '');
+      if (date == null || date.year != now.year || date.month != now.month) continue;
+
+      final rawCategory = expense['category']?.toString().trim() ?? '';
+      final category = rawCategory.isEmpty ? 'Other' : rawCategory;
+      final amount = (expense['amount'] as num?)?.toDouble() ?? 0;
+      totals[category] = (totals[category] ?? 0) + amount;
+    }
+    return totals;
+  }
+
+  Widget expenseAnalyticsCard() {
+    final entries = currentMonthCategorySpending.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final monthTotal = entries.fold<double>(0, (sum, item) => sum + item.value);
+
+    return Card(
+      elevation: 3,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.insights_outlined),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Expense Analytics',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Where your money is going this month',
+              style: TextStyle(color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            if (entries.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  'No expenses available for this month yet.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey),
+                ),
+              )
+            else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: _smartBudgetMetric(
+                      'This Month',
+                      '₹${monthTotal.toStringAsFixed(0)}',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _smartBudgetMetric('Top Category', entries.first.key),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ...entries.take(6).map((entry) {
+                final percentage =
+                    monthTotal > 0 ? (entry.value / monthTotal) * 100 : 0.0;
+                final progress =
+                    monthTotal > 0 ? entry.value / monthTotal : 0.0;
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              entry.key,
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          Text(
+                            '₹${entry.value.toStringAsFixed(0)} • ${percentage.toStringAsFixed(1)}%',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      LinearProgressIndicator(
+                        value: progress.clamp(0.0, 1.0).toDouble(),
+                        minHeight: 8,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  double dailyLimit = 0;
+  double todaySpending = 0;
+  double dailyPercentage = 0;
+  double dailyExceededAmount = 0;
+  String dailyStatus = 'NOT_SET';
+
+  double weeklyLimit = 0;
+  double thisWeekSpending = 0;
+  double weeklyPercentage = 0;
+  double weeklyExceededAmount = 0;
+  String weeklyStatus = 'NOT_SET';
+
+  double fifteenDayLimit = 0;
+  double lastFifteenDaysSpending = 0;
+  double fifteenDayPercentage = 0;
+  double fifteenDayExceededAmount = 0;
+  String fifteenDayStatus = 'NOT_SET';
+
+  double monthlyLimit = 0;
+  double currentMonthSpending = 0;
+  double monthlyPercentage = 0;
+  double monthlyExceededAmount = 0;
+  String monthlyStatus = 'NOT_SET';
+
+  bool loadingExpenses = false;
+  bool loadingDaily = false;
+  bool loadingWeekly = false;
+  bool loadingFifteenDays = false;
+  bool loadingMonthly = false;
+  bool persistentBudgetStatusEnabled = true;
+
+  static const MethodChannel _nativeChannel = MethodChannel('spend_iq_test');
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeBudgetStatus();
+  }
+
+  Future<void> _initializeBudgetStatus() async {
+    try {
+      final enabled = await _nativeChannel.invokeMethod<bool>('isBudgetStatusEnabled');
+      if (mounted && enabled != null) {
+        setState(() => persistentBudgetStatusEnabled = enabled);
+      }
+      await _nativeChannel.invokeMethod('requestNotificationPermission');
+    } catch (e) {
+      debugPrint('Budget status init error: $e');
+    }
+    await refreshDashboard();
+  }
+
+  Future<void> _updatePersistentBudgetNotification() async {
+    if (!persistentBudgetStatusEnabled) return;
+    try {
+      await _nativeChannel.invokeMethod('updateBudgetStatus', {
+        'dailyLimit': dailyLimit,
+        'todaySpending': todaySpending,
+        'weeklyLimit': weeklyLimit,
+        'thisWeekSpending': thisWeekSpending,
+        'fifteenDayLimit': fifteenDayLimit,
+        'lastFifteenDaysSpending': lastFifteenDaysSpending,
+        'monthlyLimit': monthlyLimit,
+        'currentMonthSpending': currentMonthSpending,
+      });
+    } catch (e) {
+      debugPrint('Budget notification update error: $e');
+    }
+  }
+
+  Future<void> _setPersistentBudgetStatus(bool enabled) async {
+    setState(() => persistentBudgetStatusEnabled = enabled);
+    try {
+      await _nativeChannel.invokeMethod('setBudgetStatusEnabled', {'enabled': enabled});
+      if (enabled) {
+        await _nativeChannel.invokeMethod('requestNotificationPermission');
+        await _updatePersistentBudgetNotification();
+      }
+    } catch (e) {
+      debugPrint('Budget status setting error: $e');
+    }
+  }
+
+  // ===================================================
+  // TEST NOTIFICATION
+  // ===================================================
+
+  Future<void> sendTestNotification() async {
+    try {
+      const channel = MethodChannel('spend_iq_test');
+
+      await channel.invokeMethod(
+        'sendTestNotification',
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Test payment notification sent!',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Test notification error: $e',
+          ),
+        ),
+      );
+    }
+  }
+
+  // ===================================================
+  // LOAD EXPENSES
+  // ===================================================
+
+  Future<void> loadExpenses() async {
+    setState(() {
+      loadingExpenses = true;
+    });
+
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/expenses'),
+      );
+
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
+
+        final userTransactions = data
+            .where((expense) => expense['userId'] == widget.userId)
+            .map<Map<String, dynamic>>(
+              (expense) => Map<String, dynamic>.from(expense),
+            )
+            .toList();
+
+        userTransactions.sort((a, b) {
+          final aDate = DateTime.tryParse(a['dateTime']?.toString() ?? '');
+          final bDate = DateTime.tryParse(b['dateTime']?.toString() ?? '');
+          if (aDate == null && bDate == null) return 0;
+          if (aDate == null) return 1;
+          if (bDate == null) return -1;
+          return bDate.compareTo(aDate);
+        });
+
+        double total = 0;
+        for (final expense in userTransactions) {
+          total += (expense['amount'] as num).toDouble();
+        }
+
+        if (mounted) {
+          setState(() {
+            totalSpending = total;
+            transactions = userTransactions;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Expense error: $e');
+    }
+
+    if (mounted) {
+      setState(() {
+        loadingExpenses = false;
+      });
+    }
+  }
+
+  // ===================================================
+  // LOAD DAILY
+  // ===================================================
+
+  Future<void> loadDailyLimit() async {
+    setState(() {
+      loadingDaily = true;
+    });
+
+    try {
+      final response = await http.get(
+        Uri.parse(
+          '$baseUrl/api/daily-limit/${widget.userId}/status',
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (mounted) {
+          setState(() {
+            if (data['dailyLimit'] != null) {
+              dailyLimit =
+                  (data['dailyLimit'] as num).toDouble();
+            }
+
+            if (data['todaySpending'] != null) {
+              todaySpending =
+                  (data['todaySpending'] as num).toDouble();
+            }
+
+            if (data['percentage'] != null) {
+              dailyPercentage =
+                  (data['percentage'] as num).toDouble();
+            }
+
+            if (data['exceededAmount'] != null) {
+              dailyExceededAmount =
+                  (data['exceededAmount'] as num).toDouble();
+            }
+
+            if (data['status'] != null) {
+              dailyStatus =
+                  data['status'].toString();
+            }
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Daily error: $e');
+    }
+
+    if (mounted) {
+      setState(() {
+        loadingDaily = false;
+      });
+    }
+  }
+
+  // ===================================================
+  // LOAD WEEKLY
+  // ===================================================
+
+  Future<void> loadWeeklyLimit() async {
+    setState(() {
+      loadingWeekly = true;
+    });
+
+    try {
+      final response = await http.get(
+        Uri.parse(
+          '$baseUrl/api/weekly-limit/${widget.userId}/status',
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (mounted) {
+          setState(() {
+            if (data['weeklyLimit'] != null) {
+              weeklyLimit =
+                  (data['weeklyLimit'] as num).toDouble();
+            }
+
+            if (data['thisWeekSpending'] != null) {
+              thisWeekSpending =
+                  (data['thisWeekSpending'] as num).toDouble();
+            }
+
+            if (data['percentage'] != null) {
+              weeklyPercentage =
+                  (data['percentage'] as num).toDouble();
+            }
+
+            if (data['exceededAmount'] != null) {
+              weeklyExceededAmount =
+                  (data['exceededAmount'] as num).toDouble();
+            }
+
+            if (data['status'] != null) {
+              weeklyStatus =
+                  data['status'].toString();
+            }
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Weekly error: $e');
+    }
+
+    if (mounted) {
+      setState(() {
+        loadingWeekly = false;
+      });
+    }
+  }
+
+  // ===================================================
+  // LOAD 15 DAYS
+  // ===================================================
+
+  Future<void> loadFifteenDayLimit() async {
+    setState(() {
+      loadingFifteenDays = true;
+    });
+
+    try {
+      final response = await http.get(
+        Uri.parse(
+          '$baseUrl/api/fifteen-day-limit/${widget.userId}/status',
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (mounted) {
+          setState(() {
+            if (data['fifteenDayLimit'] != null) {
+              fifteenDayLimit =
+                  (data['fifteenDayLimit'] as num)
+                      .toDouble();
+            }
+
+            if (data['lastFifteenDaysSpending'] != null) {
+              lastFifteenDaysSpending =
+                  (data['lastFifteenDaysSpending'] as num)
+                      .toDouble();
+            }
+
+            if (data['percentage'] != null) {
+              fifteenDayPercentage =
+                  (data['percentage'] as num)
+                      .toDouble();
+            }
+
+            if (data['exceededAmount'] != null) {
+              fifteenDayExceededAmount =
+                  (data['exceededAmount'] as num)
+                      .toDouble();
+            }
+
+            if (data['status'] != null) {
+              fifteenDayStatus =
+                  data['status'].toString();
+            }
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('15 Days error: $e');
+    }
+
+    if (mounted) {
+      setState(() {
+        loadingFifteenDays = false;
+      });
+    }
+  }
+
+  // ===================================================
+  // LOAD MONTHLY
+  // ===================================================
+
+  Future<void> loadMonthlyLimit() async {
+    setState(() {
+      loadingMonthly = true;
+    });
+
+    try {
+      final response = await http.get(
+        Uri.parse(
+          '$baseUrl/api/monthly-limit/${widget.userId}/status',
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (mounted) {
+          setState(() {
+            if (data['monthlyLimit'] != null) {
+              monthlyLimit =
+                  (data['monthlyLimit'] as num)
+                      .toDouble();
+            }
+
+            if (data['currentMonthSpending'] != null) {
+              currentMonthSpending =
+                  (data['currentMonthSpending'] as num)
+                      .toDouble();
+            }
+
+            if (data['percentage'] != null) {
+              monthlyPercentage =
+                  (data['percentage'] as num)
+                      .toDouble();
+            }
+
+            if (data['exceededAmount'] != null) {
+              monthlyExceededAmount =
+                  (data['exceededAmount'] as num)
+                      .toDouble();
+            }
+
+            if (data['status'] != null) {
+              monthlyStatus =
+                  data['status'].toString();
+            }
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Monthly error: $e');
+    }
+
+    if (mounted) {
+      setState(() {
+        loadingMonthly = false;
+      });
+    }
+  }
+
+  // ===================================================
+  // SMART BUDGET
+  // ===================================================
+
+  Future<void> loadSmartBudget() async {
+    if (mounted) setState(() => loadingSmartBudget = true);
+
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/smart-budget/${widget.userId}'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            smartBudget = Map<String, dynamic>.from(data);
+          });
+        }
+      } else {
+        debugPrint('Smart Budget GET failed: ${response.statusCode} ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Smart Budget GET error: $e');
+    }
+
+    if (mounted) setState(() => loadingSmartBudget = false);
+  }
+
+  Widget smartBudgetCard() {
+    final data = smartBudget;
+
+    if (data == null) {
+      return Card(
+        elevation: 3,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              const Icon(Icons.auto_graph),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  loadingSmartBudget
+                      ? 'Calculating your smart budget...'
+                      : 'Smart budget is not available yet.',
+                ),
+              ),
+              if (loadingSmartBudget)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final safeDailySpend = (data['safeDailySpend'] as num?)?.toDouble() ?? 0;
+    final savingsTarget = (data['savingsTarget'] as num?)?.toDouble() ?? 0;
+    final safeBudgetRemaining = (data['safeBudgetRemaining'] as num?)?.toDouble() ?? 0;
+    final safeMonthlyBudget = (data['safeMonthlyBudget'] as num?)?.toDouble() ?? 0;
+    final spentThisMonth = (data['spentThisMonth'] as num?)?.toDouble() ?? 0;
+    final daysRemaining = (data['daysRemaining'] as num?)?.toInt() ?? 0;
+    final status = (data['status'] ?? 'UNKNOWN').toString();
+
+    double progress = safeMonthlyBudget > 0 ? spentThisMonth / safeMonthlyBudget : 0;
+    progress = progress.clamp(0.0, 1.0).toDouble();
+
+    String statusText;
+    IconData statusIcon;
+    switch (status) {
+      case 'OVER_INCOME':
+        statusText = 'Over Income';
+        statusIcon = Icons.error_outline;
+        break;
+      case 'SAVINGS_AT_RISK':
+        statusText = 'Savings at Risk';
+        statusIcon = Icons.warning_amber_rounded;
+        break;
+      case 'CAUTION':
+        statusText = 'Caution';
+        statusIcon = Icons.warning_amber_rounded;
+        break;
+      default:
+        statusText = 'On Track';
+        statusIcon = Icons.check_circle_outline;
+    }
+
+    return Card(
+      elevation: 3,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_graph),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Smart Budget',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Icon(statusIcon),
+                const SizedBox(width: 5),
+                Text(statusText, style: const TextStyle(fontWeight: FontWeight.w600)),
+              ],
+            ),
+            const SizedBox(height: 18),
+            const Text('Safe to spend today', style: TextStyle(fontSize: 14, color: Colors.grey)),
+            const SizedBox(height: 3),
+            Text(
+              '₹${safeDailySpend.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 18),
+            LinearProgressIndicator(value: progress),
+            const SizedBox(height: 8),
+            Text(
+              '₹${spentThisMonth.toStringAsFixed(0)} spent of ₹${safeMonthlyBudget.toStringAsFixed(0)} safe monthly budget',
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(child: _smartBudgetMetric('Savings Target', '₹${savingsTarget.toStringAsFixed(0)}')),
+                const SizedBox(width: 12),
+                Expanded(child: _smartBudgetMetric('Safe Budget Left', '₹${safeBudgetRemaining.toStringAsFixed(0)}')),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _smartBudgetMetric('Days Remaining', '$daysRemaining days'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ===================================================
+  // AI BUDGET ADVISOR
+  // ===================================================
+
+  Future<void> loadAiAdvice() async {
+    if (mounted) setState(() => loadingAiAdvice = true);
+
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/ai-advisor/budget/${widget.userId}'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            aiAdvice = Map<String, dynamic>.from(data);
+          });
+        }
+      } else {
+        debugPrint('AI Advisor GET failed: ${response.statusCode} ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('AI Advisor GET error: $e');
+    }
+
+    if (mounted) setState(() => loadingAiAdvice = false);
+  }
+
+  Widget aiAdvisorCard() {
+    final data = aiAdvice;
+    final advice = (data?['advice'] ?? '').toString().trim();
+    final status = (data?['status'] ?? '').toString();
+
+    String statusText = 'AI Budget Coach';
+    IconData statusIcon = Icons.auto_awesome;
+    if (status == 'ON_TRACK') {
+      statusText = 'On Track';
+      statusIcon = Icons.check_circle_outline;
+    } else if (status == 'CAUTION') {
+      statusText = 'Caution';
+      statusIcon = Icons.warning_amber_rounded;
+    } else if (status == 'SAVINGS_AT_RISK') {
+      statusText = 'Savings at Risk';
+      statusIcon = Icons.warning_amber_rounded;
+    } else if (status == 'OVER_INCOME') {
+      statusText = 'Over Income';
+      statusIcon = Icons.error_outline;
+    }
+
+    return Card(
+      elevation: 3,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_awesome),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'SpendIQ AI Advisor',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                if (loadingAiAdvice)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else ...[
+                  Icon(statusIcon, size: 20),
+                  const SizedBox(width: 5),
+                  Text(statusText, style: const TextStyle(fontWeight: FontWeight.w600)),
+                ],
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (advice.isEmpty)
+              Text(
+                loadingAiAdvice
+                    ? 'AI is analysing your income and spending...'
+                    : monthlyIncome <= 0
+                        ? 'Set your monthly income to get personalised AI advice.'
+                        : 'AI advice is not available right now. Tap refresh to try again.',
+                style: const TextStyle(fontSize: 14, height: 1.45),
+              )
+            else
+              Text(
+                advice,
+                style: const TextStyle(fontSize: 14.5, height: 1.5),
+              ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                onPressed: loadingAiAdvice ? null : loadAiAdvice,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Refresh Advice'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _smartBudgetMetric(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  // ===================================================
+  // MONTHLY INCOME
+  // ===================================================
+
+  Future<void> loadIncome() async {
+    if (mounted) {
+      setState(() {
+        loadingIncome = true;
+      });
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/income/${widget.userId}'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (mounted) {
+          setState(() {
+            monthlyIncome =
+                (data['monthlyIncome'] as num?)?.toDouble() ?? 0;
+          });
+        }
+      } else {
+        debugPrint(
+          'Income GET failed: ${response.statusCode} ${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Income GET error: $e');
+    }
+
+    if (mounted) {
+      setState(() {
+        loadingIncome = false;
+      });
+    }
+  }
+
+  Future<void> saveIncome(double amount) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/income'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'userId': widget.userId,
+          'monthlyIncome': amount,
+        }),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        setState(() {
+          monthlyIncome =
+              (data['monthlyIncome'] as num?)?.toDouble() ?? amount;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Monthly income saved successfully'),
+          ),
+        );
+
+        await loadSmartBudget();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Could not save income (${response.statusCode})',
+            ),
+          ),
+        );
+
+        debugPrint(
+          'Income POST failed: ${response.statusCode} ${response.body}',
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Income save error: $e'),
+        ),
+      );
+    }
+  }
+
+  Future<void> showIncomeDialog() async {
+    final controller = TextEditingController(
+      text: monthlyIncome > 0
+          ? monthlyIncome.toStringAsFixed(0)
+          : '',
+    );
+
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(
+            monthlyIncome > 0
+                ? 'Update Monthly Income'
+                : 'Set Monthly Income',
+          ),
+          content: TextField(
+            controller: controller,
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+            ),
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Monthly Income',
+              prefixText: '₹ ',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(
+                  dialogContext,
+                  controller.text.trim(),
+                );
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (value == null || value.isEmpty) {
+      return;
+    }
+
+    final amount = double.tryParse(value);
+
+    if (amount == null || amount <= 0) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please enter a valid monthly income',
+          ),
+        ),
+      );
+      return;
+    }
+
+    await saveIncome(amount);
+  }
+
+  // ===================================================
+  // REFRESH
+  // ===================================================
+
+  Future<void> refreshDashboard() async {
+    await Future.wait([
+      loadExpenses(),
+      loadIncome(),
+      loadSmartBudget(),
+      loadAiAdvice(),
+      loadDailyLimit(),
+      loadWeeklyLimit(),
+      loadFifteenDayLimit(),
+      loadMonthlyLimit(),
+    ]);
+    await _updatePersistentBudgetNotification();
+  }
+
+  // ===================================================
+  // OPEN ADD EXPENSE
+  // ===================================================
+
+  Future<void> openAddExpense() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddExpenseScreen(
+          userId: widget.userId,
+        ),
+      ),
+    );
+
+    await refreshDashboard();
+  }
+
+  // ===================================================
+  // OPEN SET LIMITS
+  // ===================================================
+
+  Future<void> openSetLimits() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SetLimitsScreen(
+          userId: widget.userId,
+        ),
+      ),
+    );
+
+    await refreshDashboard();
+  }
+
+  // ===================================================
+  // PROGRESS
+  // ===================================================
+
+  double progressValue(double percentage) {
+    if (percentage <= 0) {
+      return 0;
+    }
+
+    if (percentage >= 100) {
+      return 1;
+    }
+
+    return percentage / 100;
+  }
+
+  // ===================================================
+  // STATUS COLOR
+  // ===================================================
+
+  Color statusColor(String status) {
+    if (status == 'LIMIT_EXCEEDED') {
+      return Colors.red;
+    }
+
+    if (status == 'WITHIN_LIMIT') {
+      return Colors.green;
+    }
+
+    return Colors.grey;
+  }
+
+  // ===================================================
+  // STATUS TEXT
+  // ===================================================
+
+  String statusText(String status) {
+    if (status == 'LIMIT_EXCEEDED') {
+      return 'Limit Exceeded';
+    }
+
+    if (status == 'WITHIN_LIMIT') {
+      return 'Within Limit';
+    }
+
+    return 'Limit Not Set';
+  }
+
+  // ===================================================
+  // LIMIT CARD
+  // ===================================================
+
+  Widget limitCard({
+    required String title,
+    required double spent,
+    required double limit,
+    required double percentage,
+    required String status,
+    required bool loading,
+  }) {
+    final color = statusColor(status);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 15),
+      elevation: 3,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment:
+                  MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                if (loading)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
+                  ),
+              ],
+            ),
+
+            const SizedBox(height: 15),
+
+            Text(
+              '₹${spent.toStringAsFixed(0)} / ₹${limit.toStringAsFixed(0)}',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            LinearProgressIndicator(
+              value: progressValue(percentage),
+              minHeight: 8,
+              color: color,
+              backgroundColor: Colors.grey[300],
+            ),
+
+            const SizedBox(height: 10),
+
+            Row(
+              mainAxisAlignment:
+                  MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${percentage.toStringAsFixed(1)}% Used',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                  ),
+                ),
+
+                Text(
+                  statusText(status),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+
+            if (status == 'LIMIT_EXCEEDED')
+              Padding(
+                padding:
+                    const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Exceeded by ₹${(spent - limit).toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String transactionTitle(Map<String, dynamic> expense) {
+    final merchant = expense['merchant']?.toString().trim() ?? '';
+    final description = expense['description']?.toString().trim() ?? '';
+    if (merchant.isNotEmpty) return merchant;
+    if (description.isNotEmpty) return description;
+    return 'Expense';
+  }
+
+  String transactionDate(dynamic value) {
+    if (value == null) return 'Date unavailable';
+    final date = DateTime.tryParse(value.toString());
+    if (date == null) return value.toString();
+
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    final hour12 =
+        date.hour == 0 ? 12 : (date.hour > 12 ? date.hour - 12 : date.hour);
+    final minute = date.minute.toString().padLeft(2, '0');
+    final period = date.hour >= 12 ? 'PM' : 'AM';
+
+    return '${date.day} ${months[date.month - 1]} ${date.year}, '
+        '$hour12:$minute $period';
+  }
+
+  final List<String> expenseCategories = [
+    'Food',
+    'Travel',
+    'Shopping',
+    'Bills',
+    'Education',
+    'Entertainment',
+    'Health',
+    'Other',
+  ];
+
+  Future<void> updateTransactionCategory(
+    Map<String, dynamic> expense,
+    String category,
+  ) async {
+    final id = expense['id'];
+
+    if (id == null) return;
+
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/expenses/$id/details'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'category': category,
+        }),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        setState(() {
+          expense['category'] = category;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Category saved: $category'),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Category save failed: ${response.body}'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Category error: $e'),
+        ),
+      );
+    }
+  }
+
+  Future<void> updateTransactionReason(
+    Map<String, dynamic> expense,
+    String reason,
+  ) async {
+    final id = expense['id'];
+    if (id == null) return;
+
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/expenses/$id/details'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'reason': reason,
+        }),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        setState(() {
+          expense['reason'] = reason;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Reason saved successfully'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Reason save failed: ${response.body}'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Reason error: $e'),
+        ),
+      );
+    }
+  }
+
+  Future<void> showReasonDialog(
+    Map<String, dynamic> expense,
+  ) async {
+    final controller = TextEditingController(
+      text: expense['reason']?.toString() ?? '',
+    );
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Expense Reason'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLength: 500,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Reason / Note',
+              hintText: 'Example: Breakfast, College books...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(
+                  dialogContext,
+                  controller.text.trim(),
+                );
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != null && result.isNotEmpty) {
+      await updateTransactionReason(
+        expense,
+        result,
+      );
+    }
+  }
+
+  Widget transactionCard(Map<String, dynamic> expense) {
+    final amount =
+        (expense['amount'] as num?)?.toDouble() ?? 0;
+
+    final rawSource =
+        expense['source']?.toString().trim() ?? '';
+
+    final source =
+        rawSource.isEmpty
+            ? 'MANUAL'
+            : rawSource.toUpperCase();
+
+    final paymentMode =
+        expense['paymentMode']?.toString().trim() ?? '';
+
+    final savedCategory =
+        expense['category']?.toString().trim();
+
+    final String? selectedCategory =
+        savedCategory != null &&
+                expenseCategories.contains(savedCategory)
+            ? savedCategory
+            : null;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  child: Icon(
+                    source == 'AUTO'
+                        ? Icons.auto_awesome
+                        : Icons.edit_note,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        transactionTitle(expense),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        [
+                          source,
+                          if (paymentMode.isNotEmpty &&
+                              paymentMode.toUpperCase() !=
+                                  'UNKNOWN')
+                            paymentMode.replaceAll('_', ' '),
+                          transactionDate(
+                            expense['dateTime'],
+                          ),
+                        ].join(' • '),
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '-₹${amount.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: selectedCategory,
+              decoration: const InputDecoration(
+                labelText: 'Category',
+                prefixIcon: Icon(Icons.category_outlined),
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              hint: const Text('Select Category'),
+              items: expenseCategories
+                  .map(
+                    (category) => DropdownMenuItem<String>(
+                      value: category,
+                      child: Text(category),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (category) {
+                if (category != null) {
+                  updateTransactionCategory(
+                    expense,
+                    category,
+                  );
+                }
+              },
+            ),
+
+            const SizedBox(height: 10),
+
+            if ((expense['reason']?.toString().trim() ?? '').isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.notes,
+                      size: 18,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Reason: ${expense['reason']}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () {
+                  showReasonDialog(expense);
+                },
+                icon: Icon(
+                  (expense['reason']?.toString().trim() ?? '').isEmpty
+                      ? Icons.add_comment_outlined
+                      : Icons.edit_note,
+                ),
+                label: Text(
+                  (expense['reason']?.toString().trim() ?? '').isEmpty
+                      ? 'Add Reason'
+                      : 'Edit Reason',
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget recentTransactionsSection() {
+    return Card(
+      elevation: 3,
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () {
+              setState(() {
+                showTransactions = !showTransactions;
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 17,
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.receipt_long),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Recent Transactions',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  if (loadingExpenses)
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  else
+                    Icon(
+                      showTransactions
+                          ? Icons.keyboard_arrow_up
+                          : Icons.keyboard_arrow_down,
+                    ),
+                ],
+              ),
+            ),
+          ),
+          if (showTransactions)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: transactions.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(18),
+                      child: Text('No transactions found.'),
+                    )
+                  : Column(
+                      children:
+                          transactions.take(10).map(transactionCard).toList(),
+                    ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ===================================================
+  // DASHBOARD UI
+  // ===================================================
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('SpendIQ Dashboard'),
+        actions: [
+          IconButton(
+            onPressed: refreshDashboard,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+
+      body: RefreshIndicator(
+        onRefresh: refreshDashboard,
+
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+
+            // TOTAL SPENDING
+            Card(
+              elevation: 3,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    const Text(
+                      'Total Spending',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.grey,
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    Text(
+                      '₹${totalSpending.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            // MONTHLY INCOME
+            Card(
+              elevation: 3,
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.account_balance_wallet_outlined,
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'Monthly Income',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (loadingIncome)
+                          const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
+                          ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    Text(
+                      '₹${monthlyIncome.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    Text(
+                      monthlyIncome > 0
+                          ? 'Remaining this month: ₹${(monthlyIncome - currentMonthSpending).toStringAsFixed(0)}'
+                          : 'Set your income to unlock smart budgeting',
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: monthlyIncome > 0 &&
+                                currentMonthSpending > monthlyIncome
+                            ? Colors.red
+                            : Colors.grey,
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    OutlinedButton.icon(
+                      onPressed: showIncomeDialog,
+                      icon: const Icon(Icons.edit),
+                      label: Text(
+                        monthlyIncome > 0
+                            ? 'Update Income'
+                            : 'Set Monthly Income',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            // SMART BUDGET
+            smartBudgetCard(),
+
+            const SizedBox(height: 15),
+
+            // AI ADVISOR
+            aiAdvisorCard(),
+
+            const SizedBox(height: 15),
+
+            // EXPENSE ANALYTICS
+            expenseAnalyticsCard(),
+
+            const SizedBox(height: 15),
+
+            // PURCHASE ADVISOR
+            Card(
+              elevation: 3,
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.shopping_bag_outlined),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Should I Buy This?',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Check a purchase against your real SpendIQ budget before you spend.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 14),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PurchaseAdvisorScreen(userId: widget.userId),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.auto_awesome),
+                      label: const Text('Check a Purchase'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            // RECENT TRANSACTIONS
+            recentTransactionsSection(),
+
+            const SizedBox(height: 20),
+
+            // DAILY
+            limitCard(
+              title: 'Daily Limit',
+              spent: todaySpending,
+              limit: dailyLimit,
+              percentage: dailyPercentage,
+              status: dailyStatus,
+              loading: loadingDaily,
+            ),
+
+            // WEEKLY
+            limitCard(
+              title: 'Weekly Limit',
+              spent: thisWeekSpending,
+              limit: weeklyLimit,
+              percentage: weeklyPercentage,
+              status: weeklyStatus,
+              loading: loadingWeekly,
+            ),
+
+            // 15 DAYS
+            limitCard(
+              title: '15 Days Limit',
+              spent: lastFifteenDaysSpending,
+              limit: fifteenDayLimit,
+              percentage: fifteenDayPercentage,
+              status: fifteenDayStatus,
+              loading: loadingFifteenDays,
+            ),
+
+            // MONTHLY
+            limitCard(
+              title: 'Monthly Limit',
+              spent: currentMonthSpending,
+              limit: monthlyLimit,
+              percentage: monthlyPercentage,
+              status: monthlyStatus,
+              loading: loadingMonthly,
+            ),
+
+            const SizedBox(height: 5),
+
+            // SET LIMITS
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: openSetLimits,
+                icon: const Icon(Icons.settings),
+                label: const Text(
+                  'Set Spending Limits',
+                  style: TextStyle(fontSize: 17),
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(
+                    vertical: 15,
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            Card(
+              child: SwitchListTile(
+                value: persistentBudgetStatusEnabled,
+                onChanged: _setPersistentBudgetStatus,
+                secondary: const Icon(Icons.notifications_active_outlined),
+                title: const Text(
+                  'Persistent Budget Status',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'Keep one quiet notification showing Daily, Weekly, 15-Day and Monthly budget status.',
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            // TEST NOTIFICATION
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: sendTestNotification,
+                icon: const Icon(Icons.notifications),
+                label: const Text(
+                  'Test Payment Notification',
+                  style: TextStyle(fontSize: 16),
+                ),
+                style: ElevatedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(
+                    vertical: 15,
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            // ADD EXPENSE
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: openAddExpense,
+                icon: const Icon(Icons.add),
+                label: const Text(
+                  'Add Expense',
+                  style: TextStyle(fontSize: 17),
+                ),
+                style: ElevatedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(
+                    vertical: 15,
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            Text(
+              'User ID: ${widget.userId}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =====================================================
+// PURCHASE ADVISOR SCREEN
+// =====================================================
+
+class PurchaseAdvisorScreen extends StatefulWidget {
+  final int userId;
+
+  const PurchaseAdvisorScreen({
+    super.key,
+    required this.userId,
+  });
+
+  @override
+  State<PurchaseAdvisorScreen> createState() => _PurchaseAdvisorScreenState();
+}
+
+class _PurchaseAdvisorScreenState extends State<PurchaseAdvisorScreen> {
+  final searchController = TextEditingController();
+  final productController = TextEditingController();
+  final priceController = TextEditingController();
+
+  bool searchingProducts = false;
+  bool comparingProducts = false;
+  bool loading = false;
+
+  List<Map<String, dynamic>> products = [];
+  final List<Map<String, dynamic>> comparisonSelection = [];
+  List<Map<String, dynamic>> comparisonResults = [];
+
+  Map<String, dynamic>? selectedProduct;
+  Map<String, dynamic>? result;
+  Map<String, dynamic>? comparisonSummary;
+  String? searchMessage;
+  String? comparisonMessage;
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    productController.dispose();
+    priceController.dispose();
+    super.dispose();
+  }
+
+  double productPrice(Map<String, dynamic> product) {
+    final value = product['price'];
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  double comparisonScore(Map<String, dynamic> product) {
+    final value = product['valueScore'];
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  bool sameProduct(Map<String, dynamic> a, Map<String, dynamic> b) {
+    final aName = (a['name'] ?? '').toString();
+    final bName = (b['name'] ?? '').toString();
+    final aStore = (a['store'] ?? '').toString();
+    final bStore = (b['store'] ?? '').toString();
+    final aPrice = productPrice(a);
+    final bPrice = productPrice(b);
+    return aName == bName && aStore == bStore && aPrice == bPrice;
+  }
+
+  bool isInComparison(Map<String, dynamic> product) {
+    return comparisonSelection.any((item) => sameProduct(item, product));
+  }
+
+  Future<void> searchProducts() async {
+    final query = searchController.text.trim();
+    if (query.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter what you want to search for.')),
+      );
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    setState(() {
+      searchingProducts = true;
+      products = [];
+      comparisonSelection.clear();
+      comparisonResults = [];
+      comparisonSummary = null;
+      comparisonMessage = null;
+      selectedProduct = null;
+      searchMessage = null;
+      result = null;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/product-comparison/search'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'query': query}),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = Map<String, dynamic>.from(jsonDecode(response.body));
+        final rawProducts = (data['products'] as List?) ?? [];
+        final found = rawProducts
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .where((item) => productPrice(item) > 0)
+            .toList();
+
+        setState(() {
+          products = found;
+          searchMessage = found.isEmpty
+              ? 'No usable products found. You can still enter a product manually below.'
+              : '${found.length} options found. Select a product or add 2-4 options to comparison.';
+        });
+      } else {
+        String message = 'Unable to search products.';
+        try {
+          final data = jsonDecode(response.body);
+          message = (data['message'] ?? message).toString();
+        } catch (_) {}
+        setState(() => searchMessage = message);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => searchMessage = 'Product search error: $e');
+    } finally {
+      if (mounted) setState(() => searchingProducts = false);
+    }
+  }
+
+  void selectProduct(Map<String, dynamic> product) {
+    final price = productPrice(product);
+    setState(() {
+      selectedProduct = product;
+      productController.text = (product['name'] ?? '').toString();
+      priceController.text = price.toStringAsFixed(price % 1 == 0 ? 0 : 2);
+      result = null;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Selected ${(product['name'] ?? 'product')} from ${(product['store'] ?? 'store')}',
+        ),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  void toggleComparison(Map<String, dynamic> product) {
+    setState(() {
+      final index =
+          comparisonSelection.indexWhere((item) => sameProduct(item, product));
+
+      if (index >= 0) {
+        comparisonSelection.removeAt(index);
+      } else {
+        if (comparisonSelection.length >= 4) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Compare up to 4 products at a time.'),
+            ),
+          );
+          return;
+        }
+        comparisonSelection.add(product);
+      }
+
+      comparisonResults = [];
+      comparisonSummary = null;
+      comparisonMessage = null;
+    });
+  }
+
+  Future<void> compareSelectedProducts() async {
+    if (comparisonSelection.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select at least 2 products to compare.')),
+      );
+      return;
+    }
+
+    setState(() {
+      comparingProducts = true;
+      comparisonResults = [];
+      comparisonSummary = null;
+      comparisonMessage = null;
+    });
+
+    try {
+      final payload = comparisonSelection
+          .map(
+            (product) => {
+              'name': (product['name'] ?? 'Product').toString(),
+              'price': productPrice(product),
+              'store': (product['store'] ?? 'Online Store').toString(),
+              'productUrl': (product['productUrl'] ?? '').toString(),
+              'specifications': <String, dynamic>{
+                if ((product['rating'] ?? '').toString().isNotEmpty)
+                  'rating': (product['rating'] ?? '').toString(),
+                if ((product['delivery'] ?? '').toString().isNotEmpty)
+                  'delivery': (product['delivery'] ?? '').toString(),
+              },
+            },
+          )
+          .toList();
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/product-comparison/compare'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'products': payload}),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = Map<String, dynamic>.from(jsonDecode(response.body));
+        final rawComparison = (data['comparison'] as List?) ?? [];
+        final compared = rawComparison
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList();
+
+        setState(() {
+          comparisonSummary = data;
+          comparisonResults = compared;
+          comparisonMessage = compared.isEmpty
+              ? 'Comparison returned no usable results.'
+              : 'Compared ${compared.length} products using price-based value scoring.';
+        });
+      } else {
+        String message = 'Unable to compare products.';
+        try {
+          final data = jsonDecode(response.body);
+          message = (data['message'] ?? message).toString();
+        } catch (_) {}
+        setState(() => comparisonMessage = message);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => comparisonMessage = 'Product comparison error: $e');
+    } finally {
+      if (mounted) setState(() => comparingProducts = false);
+    }
+  }
+
+  void chooseComparedProduct(Map<String, dynamic> compared) {
+    final name = (compared['name'] ?? 'Product').toString();
+    final store = (compared['store'] ?? 'Online Store').toString();
+    final price = productPrice(compared);
+
+    Map<String, dynamic> product = compared;
+    for (final original in products) {
+      if ((original['name'] ?? '').toString() == name &&
+          (original['store'] ?? '').toString() == store &&
+          productPrice(original) == price) {
+        product = original;
+        break;
+      }
+    }
+
+    selectProduct(product);
+  }
+
+  Future<void> analysePurchase() async {
+    final productName = productController.text.trim();
+    final price = double.tryParse(priceController.text.trim());
+
+    if (productName.isEmpty || price == null || price <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text('Select a product or enter a product name and valid price.'),
+        ),
+      );
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    setState(() {
+      loading = true;
+      result = null;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/purchase-advisor/check'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userId': widget.userId,
+          'productName': productName,
+          'price': price,
+        }),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        setState(() {
+          result = Map<String, dynamic>.from(jsonDecode(response.body));
+        });
+      } else {
+        String message = 'Unable to analyse purchase.';
+        try {
+          final data = jsonDecode(response.body);
+          message = (data['message'] ?? message).toString();
+        } catch (_) {}
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Purchase Advisor error: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Widget metric(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 4),
+          Text(value,
+              style:
+                  const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  Widget productCard(Map<String, dynamic> product) {
+    final name = (product['name'] ?? 'Product').toString();
+    final store = (product['store'] ?? 'Online Store').toString();
+    final rating = (product['rating'] ?? '').toString();
+    final price = productPrice(product);
+    final imageUrl = (product['imageUrl'] ?? '').toString();
+    final isSelected =
+        selectedProduct != null && sameProduct(selectedProduct!, product);
+    final checked = isInComparison(product);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: isSelected ? 4 : 1,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            InkWell(
+              onTap: () => selectProduct(product),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 70,
+                    height: 70,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: imageUrl.isNotEmpty
+                        ? Image.network(
+                            imageUrl,
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) =>
+                                const Icon(Icons.shopping_bag_outlined, size: 34),
+                          )
+                        : const Icon(Icons.shopping_bag_outlined, size: 34),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 15),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(store,
+                            style: const TextStyle(color: Colors.grey)),
+                        if (rating.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text('★ $rating',
+                              style: const TextStyle(fontSize: 13)),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '₹${price.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                            fontSize: 17, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      isSelected
+                          ? const Icon(Icons.check_circle)
+                          : const Text('Select',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Divider(height: 1),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              value: checked,
+              onChanged: (_) => toggleComparison(product),
+              controlAffinity: ListTileControlAffinity.leading,
+              title: const Text(
+                'Add to comparison',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              subtitle: checked
+                  ? Text(
+                      '${comparisonSelection.length} selected',
+                      style: const TextStyle(fontSize: 12),
+                    )
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget comparisonSection() {
+    if (comparisonSelection.isEmpty && comparisonResults.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final summary = comparisonSummary;
+    final lowest = (summary?['lowestPrice'] as num?)?.toDouble();
+    final average = (summary?['averagePrice'] as num?)?.toDouble();
+    final bestName = (summary?['bestPriceProduct'] ?? '').toString();
+    final bestStore = (summary?['bestPriceStore'] ?? '').toString();
+
+    return Card(
+      elevation: 3,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.compare_arrows),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Product Comparison',
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                Text(
+                  '${comparisonSelection.length}/4',
+                  style: const TextStyle(color: Colors.grey),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              comparisonSelection.length < 2
+                  ? 'Select at least one more product.'
+                  : 'Ready to compare ${comparisonSelection.length} products.',
+              style: const TextStyle(color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: comparisonSelection
+                  .map(
+                    (product) => InputChip(
+                      label: Text(
+                        '${(product['store'] ?? 'Store')} • ₹${productPrice(product).toStringAsFixed(0)}',
+                      ),
+                      onDeleted: () => toggleComparison(product),
+                    ),
+                  )
+                  .toList(),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 46,
+              child: ElevatedButton.icon(
+                onPressed: comparingProducts || comparisonSelection.length < 2
+                    ? null
+                    : compareSelectedProducts,
+                icon: comparingProducts
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.analytics_outlined),
+                label: Text(
+                    comparingProducts ? 'Comparing...' : 'Compare Selected'),
+              ),
+            ),
+            if (comparisonMessage != null) ...[
+              const SizedBox(height: 10),
+              Text(comparisonMessage!,
+                  style: const TextStyle(color: Colors.grey)),
+            ],
+            if (summary != null && comparisonResults.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 10),
+              const Text(
+                'Comparison Summary',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+              if (lowest != null && average != null)
+                Row(
+                  children: [
+                    Expanded(
+                        child: metric(
+                            'Lowest Price', '₹${lowest.toStringAsFixed(0)}')),
+                    const SizedBox(width: 10),
+                    Expanded(
+                        child: metric(
+                            'Average Price', '₹${average.toStringAsFixed(0)}')),
+                  ],
+                ),
+              if (bestName.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    'Best price: $bestName${bestStore.isEmpty ? '' : ' • $bestStore'}',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+              ...comparisonResults.asMap().entries.map((entry) {
+                final index = entry.key;
+                final item = entry.value;
+                final name = (item['name'] ?? 'Product').toString();
+                final store = (item['store'] ?? 'Online Store').toString();
+                final price = productPrice(item);
+                final score = comparisonScore(item);
+
+                return Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    side: BorderSide(color: Colors.grey.withOpacity(0.3)),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CircleAvatar(
+                              radius: 16,
+                              child: Text('${index + 1}'),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    name,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(store,
+                                      style:
+                                          const TextStyle(color: Colors.grey)),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  '₹${price.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold),
+                                ),
+                                Text(
+                                  'Value ${score.toStringAsFixed(0)}/100',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        LinearProgressIndicator(
+                          value: (score.clamp(0, 100)) / 100,
+                        ),
+                        const SizedBox(height: 10),
+                        OutlinedButton.icon(
+                          onPressed: () => chooseComparedProduct(item),
+                          icon: const Icon(Icons.check_circle_outline),
+                          label: const Text('Choose for Purchase Advisor'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget resultCard() {
+    final data = result;
+    if (data == null) return const SizedBox.shrink();
+
+    final decision = (data['decision'] ?? '').toString();
+    final score = (data['affordabilityScore'] as num?)?.toInt() ?? 0;
+    final aiAdvice = (data['aiAdvice'] ?? data['reason'] ?? '').toString();
+    final productPriceValue =
+        (data['productPrice'] as num?)?.toDouble() ?? 0;
+    final safeBudgetRemaining =
+        (data['safeBudgetRemaining'] as num?)?.toDouble() ?? 0;
+    final budgetAfterPurchase =
+        (data['budgetAfterPurchase'] as num?)?.toDouble() ?? 0;
+    final savingsTarget = (data['savingsTarget'] as num?)?.toDouble() ?? 0;
+
+    IconData icon = Icons.check_circle_outline;
+    if (decision == 'WAIT') icon = Icons.schedule;
+    if (decision == 'AVOID') icon = Icons.warning_amber_rounded;
+
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 32),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('SpendIQ Decision',
+                          style: TextStyle(color: Colors.grey)),
+                      Text(decision,
+                          style: const TextStyle(
+                              fontSize: 28, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+                Text('$score/100',
+                    style: const TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            LinearProgressIndicator(value: (score.clamp(0, 100)) / 100),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                    child: metric('Product Price',
+                        '₹${productPriceValue.toStringAsFixed(0)}')),
+                const SizedBox(width: 10),
+                Expanded(
+                    child: metric('Safe Budget Left',
+                        '₹${safeBudgetRemaining.toStringAsFixed(0)}')),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                    child: metric('After Purchase',
+                        '₹${budgetAfterPurchase.toStringAsFixed(0)}')),
+                const SizedBox(width: 10),
+                Expanded(
+                    child: metric(
+                        'Savings Target', '₹${savingsTarget.toStringAsFixed(0)}')),
+              ],
+            ),
+            const SizedBox(height: 18),
+            const Row(
+              children: [
+                Icon(Icons.auto_awesome),
+                SizedBox(width: 8),
+                Text('AI Advice',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(aiAdvice,
+                style: const TextStyle(fontSize: 15, height: 1.45)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleProducts = products.take(12).toList();
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Purchase Advisor')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text(
+            'Should I Buy This?',
+            style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Search current product options, compare prices and value, then let SpendIQ check the chosen product against your budget.',
+            style: TextStyle(color: Colors.grey, height: 1.4),
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: searchController,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) {
+              if (!searchingProducts) searchProducts();
+            },
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              labelText: 'Search Products',
+              hintText: 'Example: Samsung phone under 25000',
+              prefixIcon: const Icon(Icons.search),
+              border: const OutlineInputBorder(),
+              suffixIcon: searchController.text.isEmpty
+                  ? null
+                  : IconButton(
+                      onPressed: () {
+                        searchController.clear();
+                        setState(() {
+                          products = [];
+                          comparisonSelection.clear();
+                          comparisonResults = [];
+                          comparisonSummary = null;
+                          comparisonMessage = null;
+                          selectedProduct = null;
+                          searchMessage = null;
+                        });
+                      },
+                      icon: const Icon(Icons.clear),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: searchingProducts ? null : searchProducts,
+              icon: searchingProducts
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.travel_explore),
+              label:
+                  Text(searchingProducts ? 'Searching...' : 'Search Products'),
+            ),
+          ),
+          if (searchMessage != null) ...[
+            const SizedBox(height: 12),
+            Text(searchMessage!, style: const TextStyle(color: Colors.grey)),
+          ],
+          if (visibleProducts.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Product Options',
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                Text(
+                  'Showing ${visibleProducts.length} of ${products.length}',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Tap a product to choose it, or tick 2-4 products to compare.',
+              style: TextStyle(color: Colors.grey, fontSize: 13),
+            ),
+            const SizedBox(height: 10),
+            ...visibleProducts.map(productCard),
+          ],
+          if (comparisonSelection.isNotEmpty ||
+              comparisonResults.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            comparisonSection(),
+          ],
+          const SizedBox(height: 18),
+          const Divider(),
+          const SizedBox(height: 12),
+          Text(
+            selectedProduct == null
+                ? 'Manual Entry / Selected Product'
+                : 'Selected Product',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: productController,
+            textInputAction: TextInputAction.next,
+            decoration: const InputDecoration(
+              labelText: 'Product Name',
+              hintText: 'Select above or enter manually',
+              prefixIcon: Icon(Icons.shopping_bag_outlined),
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: priceController,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Product Price',
+              hintText: '3000',
+              prefixText: '₹ ',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          if (selectedProduct != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Store: ${(selectedProduct!['store'] ?? 'Online Store')}',
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ],
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 50,
+            child: ElevatedButton.icon(
+              onPressed: loading ? null : analysePurchase,
+              icon: loading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.psychology_alt_outlined),
+              label:
+                  Text(loading ? 'Analysing...' : 'Should I Buy This?'),
+            ),
+          ),
+          const SizedBox(height: 20),
+          resultCard(),
+        ],
+      ),
+    );
+  }
+}
+
+// =====================================================
+// ADD EXPENSE SCREEN
+// =====================================================
+
+class AddExpenseScreen extends StatefulWidget {
+  final int userId;
+
+  const AddExpenseScreen({
+    super.key,
+    required this.userId,
+  });
+
+  @override
+  State<AddExpenseScreen> createState() =>
+      _AddExpenseScreenState();
+}
+
+class _AddExpenseScreenState
+    extends State<AddExpenseScreen> {
+
+  final amountController = TextEditingController();
+  final descriptionController =
+      TextEditingController();
+
+  final List<String> expenseCategories = [
+    'Food',
+    'Travel',
+    'Shopping',
+    'Bills',
+    'Education',
+    'Entertainment',
+    'Health',
+    'Other',
+  ];
+
+  String? selectedCategory;
+  bool loading = false;
+
+  Future<void> addExpense() async {
+
+    if (amountController.text.trim().isEmpty ||
+        descriptionController.text.trim().isEmpty ||
+        selectedCategory == null) {
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please enter amount, description and category',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    final double? amount =
+        double.tryParse(
+      amountController.text.trim(),
+    );
+
+    if (amount == null || amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please enter a valid amount',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    setState(() {
+      loading = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/expenses'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'amount': amount,
+          'description':
+              descriptionController.text.trim(),
+          'userId': widget.userId,
+          'category': selectedCategory,
+          'source': 'MANUAL',
+        }),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Expense Added Successfully!',
+            ),
+          ),
+        );
+
+        Navigator.pop(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed: ${response.body}',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+        ),
+      );
+    }
+
+    if (mounted) {
+      setState(() {
+        loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Add Expense'),
+      ),
+
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+
+        child: Column(
+          children: [
+
+            TextField(
+              controller: amountController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Amount',
+                prefixText: '₹ ',
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            TextField(
+              controller: descriptionController,
+              decoration: const InputDecoration(
+                labelText: 'Description / Reason',
+                hintText:
+                    'Example: Breakfast, Auto fare, College book',
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            DropdownButtonFormField<String>(
+              initialValue: selectedCategory,
+              decoration: const InputDecoration(
+                labelText: 'Category',
+                prefixIcon: Icon(Icons.category_outlined),
+                border: OutlineInputBorder(),
+              ),
+              hint: const Text('Select Category'),
+              items: expenseCategories
+                  .map(
+                    (category) => DropdownMenuItem<String>(
+                      value: category,
+                      child: Text(category),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                setState(() {
+                  selectedCategory = value;
+                });
+              },
+            ),
+
+            const SizedBox(height: 20),
+
+            SizedBox(
+              width: double.infinity,
+
+              child: ElevatedButton(
+                onPressed:
+                    loading ? null : addExpense,
+
+                child: loading
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child:
+                            CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text('Save Expense'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =====================================================
+// SET LIMITS SCREEN
+// =====================================================
+
+class SetLimitsScreen extends StatefulWidget {
+  final int userId;
+
+  const SetLimitsScreen({
+    super.key,
+    required this.userId,
+  });
+
+  @override
+  State<SetLimitsScreen> createState() =>
+      _SetLimitsScreenState();
+}
+
+class _SetLimitsScreenState
+    extends State<SetLimitsScreen> {
+
+  final dailyController = TextEditingController();
+  final weeklyController = TextEditingController();
+  final fifteenDayController = TextEditingController();
+  final monthlyController = TextEditingController();
+
+  bool loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    loadExistingLimits();
+  }
+
+  Future<void> loadExistingLimits() async {
+    try {
+      final responses = await Future.wait([
+        http.get(
+          Uri.parse(
+            '$baseUrl/api/daily-limit/${widget.userId}',
+          ),
+        ),
+        http.get(
+          Uri.parse(
+            '$baseUrl/api/weekly-limit/${widget.userId}',
+          ),
+        ),
+        http.get(
+          Uri.parse(
+            '$baseUrl/api/fifteen-day-limit/${widget.userId}',
+          ),
+        ),
+        http.get(
+          Uri.parse(
+            '$baseUrl/api/monthly-limit/${widget.userId}',
+          ),
+        ),
+      ]);
+
+      if (!mounted) return;
+
+      if (responses[0].statusCode == 200) {
+        final data = jsonDecode(responses[0].body);
+
+        if (data != null &&
+            data['limitAmount'] != null) {
+          dailyController.text =
+              (data['limitAmount'] as num)
+                  .toString();
+        }
+      }
+
+      if (responses[1].statusCode == 200) {
+        final data = jsonDecode(responses[1].body);
+
+        if (data != null &&
+            data['limitAmount'] != null) {
+          weeklyController.text =
+              (data['limitAmount'] as num)
+                  .toString();
+        }
+      }
+
+      if (responses[2].statusCode == 200) {
+        final data = jsonDecode(responses[2].body);
+
+        if (data != null &&
+            data['limitAmount'] != null) {
+          fifteenDayController.text =
+              (data['limitAmount'] as num)
+                  .toString();
+        }
+      }
+
+      if (responses[3].statusCode == 200) {
+        final data = jsonDecode(responses[3].body);
+
+        if (data != null &&
+            data['limitAmount'] != null) {
+          monthlyController.text =
+              (data['limitAmount'] as num)
+                  .toString();
+        }
+      }
+    } catch (e) {
+      debugPrint('Load limits error: $e');
+    }
+  }
+
+  Future<void> saveLimits() async {
+
+    final double? daily =
+        double.tryParse(
+      dailyController.text.trim(),
+    );
+
+    final double? weekly =
+        double.tryParse(
+      weeklyController.text.trim(),
+    );
+
+    final double? fifteenDays =
+        double.tryParse(
+      fifteenDayController.text.trim(),
+    );
+
+    final double? monthly =
+        double.tryParse(
+      monthlyController.text.trim(),
+    );
+
+    if (daily == null ||
+        weekly == null ||
+        fifteenDays == null ||
+        monthly == null) {
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please enter valid limits in all fields',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    if (daily <= 0 ||
+        weekly <= 0 ||
+        fifteenDays <= 0 ||
+        monthly <= 0) {
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Limits must be greater than 0',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    setState(() {
+      loading = true;
+    });
+
+    try {
+
+      final responses = await Future.wait([
+
+        // DAILY
+        http.post(
+          Uri.parse('$baseUrl/api/daily-limit'),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'userId': widget.userId,
+            'limitAmount': daily,
+          }),
+        ),
+
+        // WEEKLY
+        http.post(
+          Uri.parse('$baseUrl/api/weekly-limit'),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'userId': widget.userId,
+            'limitAmount': weekly,
+          }),
+        ),
+
+        // 15 DAYS
+        http.post(
+          Uri.parse(
+            '$baseUrl/api/fifteen-day-limit',
+          ),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'userId': widget.userId,
+            'limitAmount': fifteenDays,
+          }),
+        ),
+
+        // MONTHLY
+        http.post(
+          Uri.parse('$baseUrl/api/monthly-limit'),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'userId': widget.userId,
+            'limitAmount': monthly,
+          }),
+        ),
+      ]);
+
+      if (!mounted) return;
+
+      final bool allSuccessful =
+          responses.every(
+        (response) => response.statusCode == 200,
+      );
+
+      if (allSuccessful) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'All limits saved successfully!',
+            ),
+          ),
+        );
+
+        Navigator.pop(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Some limits could not be saved',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Error: $e',
+          ),
+        ),
+      );
+    }
+
+    if (mounted) {
+      setState(() {
+        loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Set Spending Limits'),
+      ),
+
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+
+          children: [
+
+            const Text(
+              'Set your spending limits',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            const Text(
+              'You can update these limits anytime.',
+              style: TextStyle(
+                color: Colors.grey,
+              ),
+            ),
+
+            const SizedBox(height: 25),
+
+            // DAILY
+            TextField(
+              controller: dailyController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Daily Limit',
+                prefixText: '₹ ',
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            // WEEKLY
+            TextField(
+              controller: weeklyController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Weekly Limit',
+                prefixText: '₹ ',
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            // 15 DAYS
+            TextField(
+              controller: fifteenDayController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: '15 Days Limit',
+                prefixText: '₹ ',
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            // MONTHLY
+            TextField(
+              controller: monthlyController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Monthly Limit',
+                prefixText: '₹ ',
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 30),
+
+            SizedBox(
+              width: double.infinity,
+
+              child: ElevatedButton.icon(
+                onPressed:
+                    loading ? null : saveLimits,
+
+                icon: loading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child:
+                            CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.save),
+
+                label: Text(
+                  loading
+                      ? 'Saving...'
+                      : 'Save All Limits',
+                  style: const TextStyle(
+                    fontSize: 17,
+                  ),
+                ),
+
+                style: ElevatedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(
+                    vertical: 16,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
